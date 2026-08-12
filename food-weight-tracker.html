@@ -255,41 +255,54 @@
     </div>
 
     <div class="card">
-      <h2>Exercise &amp; steps</h2>
-      <label>Step count</label>
-      <select id="stepSelect">
-        <option value="0">No exercise recorded</option>
-        <option value="1500">Less than 3,000 steps</option>
-        <option value="3000">3,000 steps</option>
-        <option value="5000">5,000 steps</option>
-        <option value="7000">7,000 steps</option>
-        <option value="10000">10,000 steps</option>
-        <option value="12000">More than 10,000 steps</option>
-        <option value="custom">Custom number of steps</option>
-      </select>
-      <input type="number" id="customSteps" placeholder="Enter exact steps" style="display:none; margin-top:8px;">
-
-      <label>Exercise type</label>
-      <select id="exerciseType">
-        <option value="">— None —</option>
-        <option>Walking</option>
-        <option>Brisk walking</option>
-        <option>Jogging</option>
-        <option>Cycling</option>
-        <option>Swimming</option>
-        <option>Strength training</option>
-        <option>Stretching</option>
-        <option>Other</option>
-      </select>
-      <div class="row">
-        <div>
-          <label>Duration (minutes)</label>
-          <input type="number" min="0" id="exerciseDuration" placeholder="e.g. 30">
+      <h2>Exercise &amp; steps
+        <span style="display:flex; gap:8px;">
+          <button class="btn small ghost" id="exerciseCollapseBtn" style="padding:6px 10px; display:none;" onclick="toggleExerciseCollapse()">▴ Collapse</button>
+        </span>
+      </h2>
+      <div id="exerciseSummary" class="meal-block meal-collapsed" style="display:none; cursor:pointer;" onclick="toggleExerciseCollapse()">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-weight:600; font-size:14px;" id="exerciseSummaryText"></div>
+          <span style="font-size:13px; color:var(--sage-dark); font-weight:700;">▾ Expand</span>
         </div>
       </div>
-      <label>Exercise notes (optional)</label>
-      <textarea id="exerciseNotes" placeholder="Any notes about today's exercise"></textarea>
+      <div id="exerciseFields">
+        <label>Step count</label>
+        <select id="stepSelect">
+          <option value="0">No exercise recorded</option>
+          <option value="1500">Less than 3,000 steps</option>
+          <option value="3000">3,000 steps</option>
+          <option value="5000">5,000 steps</option>
+          <option value="7000">7,000 steps</option>
+          <option value="10000">10,000 steps</option>
+          <option value="12000">More than 10,000 steps</option>
+          <option value="custom">Custom number of steps</option>
+        </select>
+        <input type="number" id="customSteps" placeholder="Enter exact steps" style="display:none; margin-top:8px;">
+
+        <label>Exercise type</label>
+        <select id="exerciseType">
+          <option value="">— None —</option>
+          <option>Walking</option>
+          <option>Brisk walking</option>
+          <option>Jogging</option>
+          <option>Cycling</option>
+          <option>Swimming</option>
+          <option>Strength training</option>
+          <option>Stretching</option>
+          <option>Other</option>
+        </select>
+        <div class="row">
+          <div>
+            <label>Duration (minutes)</label>
+            <input type="number" min="0" id="exerciseDuration" placeholder="e.g. 30">
+          </div>
+        </div>
+        <label>Exercise notes (optional)</label>
+        <textarea id="exerciseNotes" placeholder="Any notes about today's exercise"></textarea>
+      </div>
     </div>
+
 
     <div class="card">
       <h2>Daily notes (optional)</h2>
@@ -882,6 +895,43 @@ document.getElementById('stepSelect').addEventListener('change', function(){
   document.getElementById('customSteps').style.display = this.value==='custom' ? 'block' : 'none';
 });
 
+// ---------- Exercise collapse/expand ----------
+let exerciseCollapsed = false;
+function currentStepsValue(){
+  const sel = document.getElementById('stepSelect').value;
+  if(sel === 'custom') return Number(document.getElementById('customSteps').value) || 0;
+  return Number(sel);
+}
+function exerciseSummaryText(){
+  const steps = currentStepsValue();
+  const type = document.getElementById('exerciseType').value;
+  const dur = document.getElementById('exerciseDuration').value;
+  const bits = [];
+  if(steps) bits.push(`${steps.toLocaleString()} steps`);
+  if(type) bits.push(type);
+  if(dur) bits.push(`${dur} min`);
+  return bits.length ? bits.join(' · ') : 'No exercise recorded';
+}
+function hasExerciseData(){
+  return currentStepsValue() > 0 || !!document.getElementById('exerciseType').value
+    || !!document.getElementById('exerciseDuration').value || !!document.getElementById('exerciseNotes').value;
+}
+function setExerciseCollapsed(collapsed){
+  exerciseCollapsed = collapsed;
+  document.getElementById('exerciseFields').style.display = collapsed ? 'none' : 'block';
+  document.getElementById('exerciseSummary').style.display = collapsed ? 'block' : 'none';
+  document.getElementById('exerciseCollapseBtn').style.display = collapsed ? 'none' : 'inline-flex';
+  if(collapsed) document.getElementById('exerciseSummaryText').textContent = exerciseSummaryText();
+}
+function toggleExerciseCollapse(){ setExerciseCollapsed(!exerciseCollapsed); }
+function refreshExerciseSummaryIfCollapsed(){
+  if(exerciseCollapsed) document.getElementById('exerciseSummaryText').textContent = exerciseSummaryText();
+}
+document.getElementById('stepSelect').addEventListener('change', refreshExerciseSummaryIfCollapsed);
+document.getElementById('customSteps').addEventListener('input', refreshExerciseSummaryIfCollapsed);
+document.getElementById('exerciseType').addEventListener('change', refreshExerciseSummaryIfCollapsed);
+document.getElementById('exerciseDuration').addEventListener('input', refreshExerciseSummaryIfCollapsed);
+
 // ---------- Save / Load record ----------
 function collectForm(){
   const date = dateInput.value;
@@ -981,6 +1031,7 @@ function loadRecordIntoForm(date){
   renderDrinks();
   renderSupplements();
   refreshBmi();
+  setExerciseCollapsed(hasExerciseData()); // collapse if this day already has exercise info saved
 }
 
 // ---------- History ----------
