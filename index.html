@@ -700,38 +700,69 @@ function toggleChar(id, char, el){
 document.getElementById('addMealBtn').addEventListener('click', addMealEntry);
 
 // ---------- Drinks UI ----------
-let drinksState = []; // {type, time, ml}
-function drinkEntryHTML(idx, entry){
-  entry = entry || {type:'Water', time:'', ml:200};
+let drinksState = []; // {id, type, time, ml}
+let drinksSeq = 0;
+let collapsedDrinkIds = new Set();
+function newDrink(){
+  drinksSeq++;
+  return { id:'d'+Date.now()+drinksSeq, type:'Water', time:'', ml:200 };
+}
+function drinkSummaryLine(entry){
+  return `${entry.type} — ${entry.ml} ml${entry.time?' @ '+entry.time:''}`;
+}
+function drinkEntryHTML(entry){
+  const isCollapsed = collapsedDrinkIds.has(entry.id);
+  if(isCollapsed){
+    return `<div class="drink-entry meal-collapsed" data-id="${entry.id}" onclick="toggleDrinkCollapse('${entry.id}')" style="grid-template-columns:1fr; cursor:pointer;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-weight:600; font-size:14px;">${drinkSummaryLine(entry)}</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="remove" style="position:static;" onclick="event.stopPropagation(); removeDrink('${entry.id}')">✕</button>
+          <span style="font-size:13px; color:var(--sage-dark); font-weight:700;">▾ Expand</span>
+        </div>
+      </div>
+    </div>`;
+  }
   const typeOpts = DRINK_TYPES.map(o=>`<option ${entry.type===o?'selected':''}>${o}</option>`).join('');
-  const chips = ML_OPTIONS.map(v=>`<span class="ml-chip ${entry.ml==v?'selected':''}" onclick="setDrinkMl(${idx},${v},this)">${v} ml</span>`).join('')
-    + `<span class="ml-chip ${!ML_OPTIONS.includes(Number(entry.ml))?'selected':''}" onclick="promptCustomMl(${idx},this)">Custom</span>`;
-  return `<div class="drink-entry" data-idx="${idx}" style="grid-template-columns:1fr;">
-    <button class="remove" style="position:static; align-self:flex-end; width:fit-content;" onclick="removeDrink(${idx})">✕ remove</button>
-
+  const chips = ML_OPTIONS.map(v=>`<span class="ml-chip ${entry.ml==v?'selected':''}" onclick="setDrinkMl('${entry.id}',${v})">${v} ml</span>`).join('')
+    + `<span class="ml-chip ${!ML_OPTIONS.includes(Number(entry.ml))?'selected':''}" onclick="promptCustomMl('${entry.id}')">Custom</span>`;
+  return `<div class="drink-entry" data-id="${entry.id}" style="grid-template-columns:1fr;">
+    <div style="display:flex; justify-content:flex-end; gap:8px;">
+      <button class="btn small ghost" style="padding:6px 10px;" onclick="toggleDrinkCollapse('${entry.id}')">▴ Collapse</button>
+      <button class="remove" style="position:static;" onclick="removeDrink('${entry.id}')">✕ remove</button>
+    </div>
     <div class="row">
-      <div><label>Drink type</label><select onchange="updateDrink(${idx},'type',this.value)">${typeOpts}</select></div>
-      <div><label>Time</label><input type="time" value="${entry.time}" onchange="updateDrink(${idx},'time',this.value)"></div>
+      <div><label>Drink type</label><select onchange="updateDrink('${entry.id}','type',this.value)">${typeOpts}</select></div>
+      <div><label>Time</label><input type="time" value="${entry.time}" onchange="updateDrink('${entry.id}','time',this.value)"></div>
     </div>
     <label>Amount</label>
     <div class="ml-chips">${chips}</div>
   </div>`;
 }
+function toggleDrinkCollapse(id){
+  if(collapsedDrinkIds.has(id)) collapsedDrinkIds.delete(id);
+  else collapsedDrinkIds.add(id);
+  renderDrinks();
+}
+function getDrink(id){ return drinksState.find(e=>e.id===id); }
 function renderDrinks(){
   const c = document.getElementById('drinksContainer');
-  c.innerHTML = drinksState.map((e,i)=>drinkEntryHTML(i,e)).join('') || '<p class="note">No drinks added yet.</p>';
+  c.innerHTML = drinksState.map(e=>drinkEntryHTML(e)).join('') || '<p class="note">No drinks added yet.</p>';
   updateFluidTotals();
 }
 document.getElementById('addDrinkBtn').addEventListener('click', ()=>{
-  drinksState.push({type:'Water', time:'', ml:200});
+  const d = newDrink();
+  drinksState.push(d);
+  collapsedDrinkIds.delete(d.id);
   renderDrinks();
 });
-function removeDrink(idx){ drinksState.splice(idx,1); renderDrinks(); }
-function updateDrink(idx, field, val){ drinksState[idx][field]=val; renderDrinks(); }
-function setDrinkMl(idx, val, el){ drinksState[idx].ml = val; renderDrinks(); }
-function promptCustomMl(idx){
-  const v = prompt('Enter custom amount in ml:', drinksState[idx].ml || '');
-  if(v && !isNaN(v)){ drinksState[idx].ml = Number(v); renderDrinks(); }
+function removeDrink(id){ drinksState = drinksState.filter(e=>e.id!==id); collapsedDrinkIds.delete(id); renderDrinks(); }
+function updateDrink(id, field, val){ const e = getDrink(id); if(e){ e[field]=val; renderDrinks(); } }
+function setDrinkMl(id, val){ const e = getDrink(id); if(e){ e.ml = val; renderDrinks(); } }
+function promptCustomMl(id){
+  const e = getDrink(id);
+  const v = prompt('Enter custom amount in ml:', e ? e.ml : '');
+  if(v && !isNaN(v)){ e.ml = Number(v); renderDrinks(); }
 }
 function updateFluidTotals(){
   let total=0, water=0, caffeinated=0, sugary=0, alcohol=0;
@@ -755,10 +786,31 @@ function updateFluidTotals(){
 // ---------- Supplements & Medication UI ----------
 const SUPPLEMENT_TYPES = ['Vitamin','Mineral','Supplement','Prescription Medication','Over-the-counter Medication','Other'];
 let supplementsState = []; // {id, time, type, name, dosage, notes}
+let collapsedSupplementIds = new Set();
+function supplementSummaryLine(entry){
+  const bits = [entry.type, entry.name, entry.dosage].filter(Boolean);
+  const desc = bits.length ? bits.join(' — ') : 'Not filled in yet';
+  return `${desc}${entry.time?' @ '+entry.time:''}`;
+}
 function supplementEntryHTML(entry){
+  const isCollapsed = collapsedSupplementIds.has(entry.id);
+  if(isCollapsed){
+    return `<div class="drink-entry meal-collapsed" data-id="${entry.id}" onclick="toggleSupplementCollapse('${entry.id}')" style="grid-template-columns:1fr; cursor:pointer;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-weight:600; font-size:14px;">${supplementSummaryLine(entry)}</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="remove" style="position:static;" onclick="event.stopPropagation(); removeSupplement('${entry.id}')">✕</button>
+          <span style="font-size:13px; color:var(--sage-dark); font-weight:700;">▾ Expand</span>
+        </div>
+      </div>
+    </div>`;
+  }
   const typeOpts = SUPPLEMENT_TYPES.map(o=>`<option ${entry.type===o?'selected':''}>${o}</option>`).join('');
   return `<div class="drink-entry" data-id="${entry.id}" style="grid-template-columns:1fr;">
-    <button class="remove" style="position:static; align-self:flex-end; width:fit-content;" onclick="removeSupplement('${entry.id}')">✕ remove</button>
+    <div style="display:flex; justify-content:flex-end; gap:8px;">
+      <button class="btn small ghost" style="padding:6px 10px;" onclick="toggleSupplementCollapse('${entry.id}')">▴ Collapse</button>
+      <button class="remove" style="position:static;" onclick="removeSupplement('${entry.id}')">✕ remove</button>
+    </div>
     <div class="row">
       <div><label>Type</label><select onchange="updateSupplement('${entry.id}','type',this.value)"><option value="">— Select —</option>${typeOpts}</select></div>
       <div><label>Time taken</label><input type="time" value="${entry.time}" onchange="updateSupplement('${entry.id}','time',this.value)"></div>
@@ -771,6 +823,11 @@ function supplementEntryHTML(entry){
     <input type="text" value="${entry.notes}" placeholder="e.g. taken with food" oninput="updateSupplement('${entry.id}','notes',this.value)">
   </div>`;
 }
+function toggleSupplementCollapse(id){
+  if(collapsedSupplementIds.has(id)) collapsedSupplementIds.delete(id);
+  else collapsedSupplementIds.add(id);
+  renderSupplements();
+}
 function renderSupplements(){
   const c = document.getElementById('supplementsContainer');
   c.innerHTML = supplementsState.length
@@ -778,10 +835,12 @@ function renderSupplements(){
     : '<p class="note">Nothing logged yet — tap the button below if you took any vitamins, supplements, or medication today.</p>';
 }
 document.getElementById('addSupplementBtn').addEventListener('click', ()=>{
-  supplementsState.push({ id:'sup'+Date.now()+Math.random().toString(36).slice(2), time:'', type:'', name:'', dosage:'', notes:'' });
+  const id = 'sup'+Date.now()+Math.random().toString(36).slice(2);
+  supplementsState.push({ id, time:'', type:'', name:'', dosage:'', notes:'' });
+  collapsedSupplementIds.delete(id);
   renderSupplements();
 });
-function removeSupplement(id){ supplementsState = supplementsState.filter(e=>e.id!==id); renderSupplements(); }
+function removeSupplement(id){ supplementsState = supplementsState.filter(e=>e.id!==id); collapsedSupplementIds.delete(id); renderSupplements(); }
 function updateSupplement(id, field, val){
   const e = supplementsState.find(x=>x.id===id);
   if(e) e[field] = val;
@@ -888,7 +947,11 @@ function loadRecordIntoForm(date){
     mealEntries = normalizeMeals(rec);
     collapsedMealIds = new Set(mealEntries.map(e=>e.id)); // collapse saved meals by default to keep the view tidy
     drinksState = rec.drinks ? JSON.parse(JSON.stringify(rec.drinks)) : [];
+    drinksState.forEach(d=>{ if(!d.id) d.id = 'd'+Date.now()+Math.random().toString(36).slice(2); }); // backfill ids for older saved records
+    collapsedDrinkIds = new Set(drinksState.map(e=>e.id));
     supplementsState = rec.supplements ? JSON.parse(JSON.stringify(rec.supplements)) : [];
+    supplementsState.forEach(s=>{ if(!s.id) s.id = 'sup'+Date.now()+Math.random().toString(36).slice(2); });
+    collapsedSupplementIds = new Set(supplementsState.map(e=>e.id));
     const stepOptsSet = [0,1500,3000,5000,7000,10000,12000];
     document.getElementById('stepSelect').value = stepOptsSet.includes(rec.steps) ? rec.steps : 'custom';
     document.getElementById('customSteps').style.display = stepOptsSet.includes(rec.steps) ? 'none':'block';
@@ -903,7 +966,9 @@ function loadRecordIntoForm(date){
     mealEntries = [];
     collapsedMealIds = new Set();
     drinksState = [];
+    collapsedDrinkIds = new Set();
     supplementsState = [];
+    collapsedSupplementIds = new Set();
     document.getElementById('stepSelect').value = '0';
     document.getElementById('customSteps').style.display='none';
     document.getElementById('customSteps').value='';
