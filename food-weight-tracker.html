@@ -248,6 +248,12 @@
     </div>
 
     <div class="card">
+      <h2>Supplements &amp; medication<span class="sub">Log anything you took today — vitamins, supplements, or prescribed medication</span></h2>
+      <div id="supplementsContainer"></div>
+      <button class="btn secondary" id="addSupplementBtn" style="margin-top:8px;">+ Add supplement / medication</button>
+    </div>
+
+    <div class="card">
       <h2>Exercise &amp; steps</h2>
       <label>Step count</label>
       <select id="stepSelect">
@@ -375,7 +381,7 @@
         <button class="btn secondary small" id="exportCsvBtn">Export CSV</button>
       </div>
       <button class="btn ghost small" id="exportJsonBtn" style="margin-top:8px;">Export JSON (full backup)</button>
-      <p class="note">Excel export gives you three neatly organised sheets: Daily Summary, Meals detail, and Drinks detail — ready to open in Excel, Google Sheets, or Numbers.</p>
+      <p class="note">Excel export gives you four neatly organised sheets: Daily Summary, Meals detail, Drinks detail, and Supplements — ready to open in Excel, Google Sheets, or Numbers.</p>
       <label style="margin-top:14px;">Import backup (JSON)</label>
       <input type="file" id="importFile" accept="application/json">
       <div class="divider"></div>
@@ -437,7 +443,7 @@ const DESSERT_ITEMS = ['No dessert','Cakes','Puffs','Ice cream','Ice blended dri
 const STYLE_ITEMS = ['Chinese','Western','Indian','Malay','Japanese','Korean','Thai','Grilled','Steamed','Boiled','Baked','Roasted','Fried','Deep-fried','Stir-fried','Other'];
 const CHAR_ITEMS = ['Spicy','Non-spicy','Soup','Dry','Gravy','Sweet','Salty'];
 const PORTIONS = ['Small','Medium','Large','Half portion','One portion','Two portions'];
-const DRINK_TYPES = ['Water','Coffee','Tea','Milk','Milo','Hot chocolate','Fruit juice','Soft drink','Zero-sugar soft drink','Beer','Wine','Hard liquor','Soup','Other'];
+const DRINK_TYPES = ['Water','Coffee','Bulletproof Coffee','Tea','Milk','Milo','Hot chocolate','Fruit juice','Soft drink','Zero-sugar soft drink','Beer','Wine','Hard liquor','Soup','Other'];
 const ML_OPTIONS = [100,150,200,250,330,400,500];
 
 // Reference-only calorie estimates. These are typical/approximate figures for a
@@ -459,7 +465,7 @@ const PORTION_MULTIPLIER = {
   'Small': 0.7, 'Medium': 1, 'Large': 1.4, 'Half portion': 0.5, 'One portion': 1, 'Two portions': 2
 };
 const CALORIE_REF_DRINK_PER_100ML = {
-  'Water':0, 'Coffee':40, 'Tea':10, 'Milk':60, 'Milo':70, 'Hot chocolate':80,
+  'Water':0, 'Coffee':40, 'Bulletproof Coffee':95, 'Tea':10, 'Milk':60, 'Milo':70, 'Hot chocolate':80,
   'Fruit juice':45, 'Soft drink':42, 'Zero-sugar soft drink':1, 'Beer':43,
   'Wine':85, 'Hard liquor':250, 'Soup':30
 };
@@ -691,7 +697,7 @@ function promptCustomMl(idx){
 }
 function updateFluidTotals(){
   let total=0, water=0, caffeinated=0, sugary=0, alcohol=0;
-  const CAFFEINE = ['Coffee','Tea','Milo','Hot chocolate'];
+  const CAFFEINE = ['Coffee','Bulletproof Coffee','Tea','Milo','Hot chocolate'];
   const SUGARY = ['Milo','Hot chocolate','Fruit juice','Soft drink'];
   const ALCOHOL = ['Beer','Wine','Hard liquor'];
   drinksState.forEach(d=>{
@@ -706,6 +712,41 @@ function updateFluidTotals(){
   document.getElementById('totalFluidL').textContent = (total/1000).toFixed(2) + ' L';
   document.getElementById('waterMl').textContent = water + ' ml';
   document.getElementById('alcoholMl').textContent = alcohol + ' ml';
+}
+
+// ---------- Supplements & Medication UI ----------
+const SUPPLEMENT_TYPES = ['Vitamin','Mineral','Supplement','Prescription Medication','Over-the-counter Medication','Other'];
+let supplementsState = []; // {id, time, type, name, dosage, notes}
+function supplementEntryHTML(entry){
+  const typeOpts = SUPPLEMENT_TYPES.map(o=>`<option ${entry.type===o?'selected':''}>${o}</option>`).join('');
+  return `<div class="drink-entry" data-id="${entry.id}" style="grid-template-columns:1fr;">
+    <button class="remove" style="position:static; align-self:flex-end; width:fit-content;" onclick="removeSupplement('${entry.id}')">✕ remove</button>
+    <div class="row">
+      <div><label>Type</label><select onchange="updateSupplement('${entry.id}','type',this.value)"><option value="">— Select —</option>${typeOpts}</select></div>
+      <div><label>Time taken</label><input type="time" value="${entry.time}" onchange="updateSupplement('${entry.id}','time',this.value)"></div>
+    </div>
+    <div class="row">
+      <div><label>Name</label><input type="text" value="${entry.name}" placeholder="e.g. Vitamin D, Metformin" oninput="updateSupplement('${entry.id}','name',this.value)"></div>
+      <div><label>Dosage</label><input type="text" value="${entry.dosage}" placeholder="e.g. 500mg, 1 tablet" oninput="updateSupplement('${entry.id}','dosage',this.value)"></div>
+    </div>
+    <label>Notes (optional)</label>
+    <input type="text" value="${entry.notes}" placeholder="e.g. taken with food" oninput="updateSupplement('${entry.id}','notes',this.value)">
+  </div>`;
+}
+function renderSupplements(){
+  const c = document.getElementById('supplementsContainer');
+  c.innerHTML = supplementsState.length
+    ? supplementsState.map(e=>supplementEntryHTML(e)).join('')
+    : '<p class="note">Nothing logged yet — tap the button below if you took any vitamins, supplements, or medication today.</p>';
+}
+document.getElementById('addSupplementBtn').addEventListener('click', ()=>{
+  supplementsState.push({ id:'sup'+Date.now()+Math.random().toString(36).slice(2), time:'', type:'', name:'', dosage:'', notes:'' });
+  renderSupplements();
+});
+function removeSupplement(id){ supplementsState = supplementsState.filter(e=>e.id!==id); renderSupplements(); }
+function updateSupplement(id, field, val){
+  const e = supplementsState.find(x=>x.id===id);
+  if(e) e[field] = val;
 }
 
 // ---------- BMI ----------
@@ -758,6 +799,7 @@ function collectForm(){
     weight, height, bmi,
     meals: JSON.parse(JSON.stringify(mealEntries)),
     drinks: JSON.parse(JSON.stringify(drinksState)),
+    supplements: JSON.parse(JSON.stringify(supplementsState)),
     steps,
     exerciseType: document.getElementById('exerciseType').value,
     exerciseDuration: document.getElementById('exerciseDuration').value,
@@ -807,6 +849,7 @@ function loadRecordIntoForm(date){
     document.getElementById('heightInput').value = rec.height ?? (profile.height||'');
     mealEntries = normalizeMeals(rec);
     drinksState = rec.drinks ? JSON.parse(JSON.stringify(rec.drinks)) : [];
+    supplementsState = rec.supplements ? JSON.parse(JSON.stringify(rec.supplements)) : [];
     const stepOptsSet = [0,1500,3000,5000,7000,10000,12000];
     document.getElementById('stepSelect').value = stepOptsSet.includes(rec.steps) ? rec.steps : 'custom';
     document.getElementById('customSteps').style.display = stepOptsSet.includes(rec.steps) ? 'none':'block';
@@ -820,6 +863,7 @@ function loadRecordIntoForm(date){
     document.getElementById('heightInput').value = profile.height || '';
     mealEntries = [];
     drinksState = [];
+    supplementsState = [];
     document.getElementById('stepSelect').value = '0';
     document.getElementById('customSteps').style.display='none';
     document.getElementById('customSteps').value='';
@@ -830,6 +874,7 @@ function loadRecordIntoForm(date){
   }
   renderMeals();
   renderDrinks();
+  renderSupplements();
   refreshBmi();
 }
 
@@ -959,6 +1004,10 @@ function openDayModal(date){
     ? '<ul style="margin:4px 0 0 18px; padding:0;">' + (r.drinks||[]).map(d=>`<li>${d.type} — ${d.ml} ml${d.time?' @ '+d.time:''}</li>`).join('') + '</ul>'
     : '<p class="note" style="margin-top:4px;">None recorded.</p>';
 
+  const supplementsHtml = (r.supplements||[]).length
+    ? '<ul style="margin:4px 0 0 18px; padding:0;">' + (r.supplements||[]).map(s=>`<li>${[s.type, s.name, s.dosage].filter(Boolean).join(' — ')}${s.time?' @ '+s.time:''}${s.notes?' ('+s.notes+')':''}</li>`).join('') + '</ul>'
+    : '<p class="note" style="margin-top:4px;">None recorded.</p>';
+
   document.getElementById('modalBody').innerHTML = `
     <div class="stat-grid" style="margin-bottom:12px;">
       <div class="stat"><div class="val">${r.weight ?? '–'} kg</div><div class="lbl">Weight ${weightBadge}</div></div>
@@ -973,6 +1022,8 @@ function openDayModal(date){
     ${mealsHtml}
     <h3 style="font-size:13px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.04em; margin-top:10px;">Drinks</h3>
     ${drinksHtml}
+    <h3 style="font-size:13px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.04em; margin-top:10px;">Supplements &amp; medication</h3>
+    ${supplementsHtml}
     ${r.exerciseNotes?`<p style="margin-top:10px;"><strong>Exercise notes:</strong> ${r.exerciseNotes}</p>`:''}
     ${r.notes?`<p style="margin-top:6px;"><strong>Daily notes:</strong> ${r.notes}</p>`:''}
   `;
@@ -1271,10 +1322,20 @@ document.getElementById('exportExcelBtn').addEventListener('click', ()=>{
     });
   });
 
+  // Sheet 4: Supplements & Medication detail
+  const supplementRows = [];
+  dates.forEach(d=>{
+    const r = recs[d];
+    (r.supplements||[]).forEach(s=>{
+      supplementRows.push({ Date: d, Time: s.time||'', Type: s.type||'', Name: s.name||'', Dosage: s.dosage||'', Notes: s.notes||'' });
+    });
+  });
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailyRows), 'Daily Summary');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(mealRows.length?mealRows:[{Date:'',Meal:'',Note:'No meal items recorded'}]), 'Meals Detail');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(drinkRows.length?drinkRows:[{Date:'',Note:'No drinks recorded'}]), 'Drinks Detail');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(supplementRows.length?supplementRows:[{Date:'',Note:'No supplements or medication recorded'}]), 'Supplements');
   XLSX.writeFile(wb, 'food-weight-tracker.xlsx');
   toast('Excel file downloaded');
 });
