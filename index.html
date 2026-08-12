@@ -118,6 +118,7 @@
 
   .meal-block{border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:12px; background:var(--cream);}
   .meal-block h3{font-size:14.5px; display:flex; align-items:center; justify-content:space-between;}
+  .meal-block.meal-collapsed{padding:12px 14px;}
   .food-entry{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; margin-top:8px; position:relative;}
   .food-entry .remove{position:absolute; top:8px; right:8px; background:none; border:none; color:var(--ink-soft); font-size:16px; cursor:pointer;}
   .drink-entry{display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:end; margin-top:8px; background:var(--card); padding:10px; border-radius:12px; border:1px solid var(--line);}
@@ -224,7 +225,13 @@
     </div>
 
     <div class="card">
-      <h2>Meals<span class="sub">Add each meal as you eat it — as many or as few as you like today</span></h2>
+      <h2>Supplements &amp; medication<span class="sub">Log anything you took today — vitamins, supplements, or prescribed medication</span></h2>
+      <div id="supplementsContainer"></div>
+      <button class="btn secondary" id="addSupplementBtn" style="margin-top:8px;">+ Add supplement / medication</button>
+    </div>
+
+    <div class="card">
+      <h2>Meals<span class="sub">Add each meal as you eat it — tap a meal to expand or collapse it</span></h2>
       <div class="stat" style="margin-bottom:12px;">
         <div class="val" id="dailyCalorieTotal">–</div>
         <div class="lbl">Today's calories (from items you've entered)</div>
@@ -245,12 +252,6 @@
         <div class="stat"><div class="val" id="waterMl">0 ml</div><div class="lbl">Water</div></div>
         <div class="stat"><div class="val" id="alcoholMl">0 ml</div><div class="lbl">Alcoholic drinks</div></div>
       </div>
-    </div>
-
-    <div class="card">
-      <h2>Supplements &amp; medication<span class="sub">Log anything you took today — vitamins, supplements, or prescribed medication</span></h2>
-      <div id="supplementsContainer"></div>
-      <button class="btn secondary" id="addSupplementBtn" style="margin-top:8px;">+ Add supplement / medication</button>
     </div>
 
     <div class="card">
@@ -541,11 +542,34 @@ dateInput.addEventListener('change', ()=>{ updateDayOfWeek(); loadRecordIntoForm
 // { id, time, mealType, main, side, dessert, style, chars:[], portion, qty, calories, note }
 let mealEntries = [];
 let mealEntrySeq = 0;
+let collapsedMealIds = new Set(); // ids of meal entries currently collapsed (compact view)
 function newMealEntry(){
   mealEntrySeq++;
   return { id:'m'+Date.now()+mealEntrySeq, time:'', mealType:'', main:'', side:'', dessert:'', style:'', chars:[], portion:'Medium', qty:'', calories:'', note:'' };
 }
+function mealSummaryLine(entry){
+  const bits = [entry.main, entry.side, entry.dessert].filter(v=>v && !['No main dish','No side dish','No dessert'].includes(v));
+  const desc = bits.length ? bits.join(' · ') : 'Not filled in yet';
+  const cal = entry.calories ? ` · ${entry.calories} kcal` : '';
+  return { type: entry.mealType || 'Meal', time: entry.time || '', desc: desc + cal };
+}
 function mealEntryHTML(entry, idx){
+  const isCollapsed = collapsedMealIds.has(entry.id);
+  if(isCollapsed){
+    const s = mealSummaryLine(entry);
+    return `<div class="meal-block meal-collapsed" data-id="${entry.id}" onclick="toggleMealCollapse('${entry.id}')" style="cursor:pointer;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-weight:700; font-size:14.5px;">${s.type}${s.time?' · '+s.time:''}</div>
+          <div class="note" style="margin-top:2px;">${s.desc}</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="remove" style="position:static;" onclick="event.stopPropagation(); removeMealEntry('${entry.id}')">✕</button>
+          <span style="font-size:13px; color:var(--sage-dark); font-weight:700;">▾ Expand</span>
+        </div>
+      </div>
+    </div>`;
+  }
   const charsChips = CHAR_ITEMS.map(c=>{
     const sel = entry.chars.includes(c) ? 'selected' : '';
     return `<span class="chip ${sel}" data-char="${c}" onclick="toggleChar('${entry.id}','${c}',this)">${c}</span>`;
@@ -557,7 +581,12 @@ function mealEntryHTML(entry, idx){
   const styleOpts = STYLE_ITEMS.map(o=>`<option ${entry.style===o?'selected':''}>${o}</option>`).join('');
   const portionOpts = PORTIONS.map(o=>`<option ${entry.portion===o?'selected':''}>${o}</option>`).join('');
   return `<div class="meal-block" data-id="${entry.id}">
-    <h3>Meal ${idx+1} <button class="remove" style="position:static;" onclick="removeMealEntry('${entry.id}')">✕ remove</button></h3>
+    <h3>Meal ${idx+1}
+      <span style="display:flex; gap:8px;">
+        <button class="btn small ghost" style="padding:6px 10px;" onclick="toggleMealCollapse('${entry.id}')">▴ Collapse</button>
+        <button class="remove" style="position:static;" onclick="removeMealEntry('${entry.id}')">✕ remove</button>
+      </span>
+    </h3>
     <div class="row">
       <div>
         <label>Type of meal</label>
@@ -595,6 +624,11 @@ function mealEntryHTML(entry, idx){
     <input type="text" value="${entry.note}" placeholder="Any extra detail" oninput="updateMealEntry('${entry.id}','note',this.value)">
   </div>`;
 }
+function toggleMealCollapse(id){
+  if(collapsedMealIds.has(id)) collapsedMealIds.delete(id);
+  else collapsedMealIds.add(id);
+  renderMeals();
+}
 function getMealEntry(id){ return mealEntries.find(e=>e.id===id); }
 function renderCalRef(id){
   const entry = getMealEntry(id);
@@ -613,15 +647,19 @@ function renderMeals(){
   c.innerHTML = mealEntries.length
     ? mealEntries.map((e,i)=>mealEntryHTML(e,i)).join('')
     : '<p class="note">No meals logged yet today — tap "Add meal entry" below, whether that\'s 1 meal or 5.</p>';
-  mealEntries.forEach(e=> renderCalRef(e.id));
+  mealEntries.forEach(e=>{ if(!collapsedMealIds.has(e.id)) renderCalRef(e.id); });
   updateDailyCalorieTotal();
 }
 function addMealEntry(){
-  mealEntries.push(newMealEntry());
+  const e = newMealEntry();
+  mealEntries.push(e);
+  // keep it expanded so it can be filled in straight away
+  collapsedMealIds.delete(e.id);
   renderMeals();
 }
 function removeMealEntry(id){
   mealEntries = mealEntries.filter(e=>e.id!==id);
+  collapsedMealIds.delete(id);
   renderMeals();
 }
 function updateMealEntry(id, field, val){
@@ -848,6 +886,7 @@ function loadRecordIntoForm(date){
     document.getElementById('weightInput').value = rec.weight ?? '';
     document.getElementById('heightInput').value = rec.height ?? (profile.height||'');
     mealEntries = normalizeMeals(rec);
+    collapsedMealIds = new Set(mealEntries.map(e=>e.id)); // collapse saved meals by default to keep the view tidy
     drinksState = rec.drinks ? JSON.parse(JSON.stringify(rec.drinks)) : [];
     supplementsState = rec.supplements ? JSON.parse(JSON.stringify(rec.supplements)) : [];
     const stepOptsSet = [0,1500,3000,5000,7000,10000,12000];
@@ -862,6 +901,7 @@ function loadRecordIntoForm(date){
     document.getElementById('weightInput').value = '';
     document.getElementById('heightInput').value = profile.height || '';
     mealEntries = [];
+    collapsedMealIds = new Set();
     drinksState = [];
     supplementsState = [];
     document.getElementById('stepSelect').value = '0';
