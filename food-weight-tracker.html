@@ -255,68 +255,24 @@
     </div>
 
     <div class="card">
-      <h2>Exercise &amp; steps
-        <span style="display:flex; gap:8px;">
-          <button class="btn small ghost" id="exerciseCollapseBtn" style="padding:6px 10px; display:none;" onclick="toggleExerciseCollapse()">▴ Collapse</button>
-        </span>
-      </h2>
-      <div id="exerciseSummary" class="meal-block meal-collapsed" style="display:none; cursor:pointer;" onclick="toggleExerciseCollapse()">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div style="font-weight:600; font-size:14px;" id="exerciseSummaryText"></div>
-          <span style="font-size:13px; color:var(--sage-dark); font-weight:700;">▾ Expand</span>
-        </div>
-      </div>
-      <div id="exerciseFields">
-        <label>Step count</label>
-        <select id="stepSelect">
-          <option value="0">No exercise recorded</option>
-          <option value="1500">Less than 3,000 steps</option>
-          <option value="3000">3,000 steps</option>
-          <option value="5000">5,000 steps</option>
-          <option value="7000">7,000 steps</option>
-          <option value="10000">10,000 steps</option>
-          <option value="12000">More than 10,000 steps</option>
-          <option value="custom">Custom number of steps</option>
-        </select>
-        <input type="number" id="customSteps" placeholder="Enter exact steps" style="display:none; margin-top:8px;">
-
-        <label>Exercise type</label>
-        <select id="exerciseType">
-          <option value="">— None —</option>
-          <optgroup label="Cardio">
-            <option>Walking</option>
-            <option>Brisk walking</option>
-            <option>Jogging</option>
-            <option>Cycling</option>
-            <option>Swimming</option>
-            <option>Water walking</option>
-            <option>Water aerobics</option>
-          </optgroup>
-          <optgroup label="Strength &amp; toning (quads / core)">
-            <option>Squats</option>
-            <option>Lunges</option>
-            <option>Wall sit</option>
-            <option>Calf raises (tip toes)</option>
-            <option>Plank</option>
-            <option>Sit-ups / crunches</option>
-            <option>Strength training</option>
-          </optgroup>
-          <optgroup label="Other">
-            <option>Stretching</option>
-            <option>Other</option>
-          </optgroup>
-        </select>
-        <div class="row">
-          <div>
-            <label>Duration (minutes)</label>
-            <input type="number" min="0" id="exerciseDuration" placeholder="e.g. 30">
-          </div>
-        </div>
-        <label>Exercise notes (optional)</label>
-        <textarea id="exerciseNotes" placeholder="Any notes about today's exercise"></textarea>
-      </div>
+      <h2>Exercise &amp; steps</h2>
+      <label>Step count</label>
+      <select id="stepSelect">
+        <option value="0">No exercise recorded</option>
+        <option value="1500">Less than 3,000 steps</option>
+        <option value="3000">3,000 steps</option>
+        <option value="5000">5,000 steps</option>
+        <option value="7000">7,000 steps</option>
+        <option value="10000">10,000 steps</option>
+        <option value="12000">More than 10,000 steps</option>
+        <option value="custom">Custom number of steps</option>
+      </select>
+      <input type="number" id="customSteps" placeholder="Enter exact steps" style="display:none; margin-top:8px;">
+      <div class="divider"></div>
+      <label style="margin-top:0;">Exercise activities<span class="sub" style="display:block; font-weight:400; text-transform:none; letter-spacing:0; margin-top:2px;">Add as many as you did today — tap one to expand or collapse it</span></label>
+      <div id="exerciseContainer" style="margin-top:8px;"></div>
+      <button class="btn secondary" id="addExerciseBtn" style="margin-top:8px;">+ Add exercise</button>
     </div>
-
 
     <div class="card">
       <h2>Daily notes (optional)</h2>
@@ -409,7 +365,7 @@
         <button class="btn secondary small" id="exportCsvBtn">Export CSV</button>
       </div>
       <button class="btn ghost small" id="exportJsonBtn" style="margin-top:8px;">Export JSON (full backup)</button>
-      <p class="note">Excel export gives you four neatly organised sheets: Daily Summary, Meals detail, Drinks detail, and Supplements — ready to open in Excel, Google Sheets, or Numbers.</p>
+      <p class="note">Excel export gives you five neatly organised sheets: Daily Summary, Meals detail, Drinks detail, Supplements, and Exercise detail — ready to open in Excel, Google Sheets, or Numbers.</p>
       <label style="margin-top:14px;">Import backup (JSON)</label>
       <input type="file" id="importFile" accept="application/json">
       <div class="divider"></div>
@@ -909,42 +865,82 @@ document.getElementById('stepSelect').addEventListener('change', function(){
   document.getElementById('customSteps').style.display = this.value==='custom' ? 'block' : 'none';
 });
 
-// ---------- Exercise collapse/expand ----------
-let exerciseCollapsed = false;
-function currentStepsValue(){
-  const sel = document.getElementById('stepSelect').value;
-  if(sel === 'custom') return Number(document.getElementById('customSteps').value) || 0;
-  return Number(sel);
+// ---------- Exercise activities UI (repeatable, collapsible list) ----------
+const EXERCISE_TYPE_OPTIONS_GROUPED = {
+  'Cardio': ['Walking','Brisk walking','Jogging','Cycling','Swimming','Water walking','Water aerobics'],
+  'Strength & toning (quads / core)': ['Squats','Lunges','Wall sit','Calf raises (tip toes)','Plank','Sit-ups / crunches','Strength training'],
+  'Other': ['Stretching','Other']
+};
+let exerciseEntries = []; // {id, time, type, duration, notes}
+let collapsedExerciseIds = new Set();
+function newExerciseEntry(){
+  return { id:'ex'+Date.now()+Math.random().toString(36).slice(2), time:'', type:'', duration:'', notes:'' };
 }
-function exerciseSummaryText(){
-  const steps = currentStepsValue();
-  const type = document.getElementById('exerciseType').value;
-  const dur = document.getElementById('exerciseDuration').value;
-  const bits = [];
-  if(steps) bits.push(`${steps.toLocaleString()} steps`);
-  if(type) bits.push(type);
-  if(dur) bits.push(`${dur} min`);
-  return bits.length ? bits.join(' · ') : 'No exercise recorded';
+function exerciseSummaryLine(entry){
+  const bits = [entry.type, entry.duration ? `${entry.duration} min` : ''].filter(Boolean);
+  const desc = bits.length ? bits.join(' · ') : 'Not filled in yet';
+  return `${desc}${entry.time?' @ '+entry.time:''}`;
 }
-function hasExerciseData(){
-  return currentStepsValue() > 0 || !!document.getElementById('exerciseType').value
-    || !!document.getElementById('exerciseDuration').value || !!document.getElementById('exerciseNotes').value;
+function exerciseEntryHTML(entry){
+  const isCollapsed = collapsedExerciseIds.has(entry.id);
+  if(isCollapsed){
+    return `<div class="drink-entry meal-collapsed" data-id="${entry.id}" onclick="toggleExerciseEntryCollapse('${entry.id}')" style="grid-template-columns:1fr; cursor:pointer;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-weight:600; font-size:14px;">${exerciseSummaryLine(entry)}</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="remove" style="position:static;" onclick="event.stopPropagation(); removeExerciseEntry('${entry.id}')">✕</button>
+          <span style="font-size:13px; color:var(--sage-dark); font-weight:700;">▾ Expand</span>
+        </div>
+      </div>
+    </div>`;
+  }
+  const typeOpts = Object.keys(EXERCISE_TYPE_OPTIONS_GROUPED).map(group=>
+    `<optgroup label="${group}">` + EXERCISE_TYPE_OPTIONS_GROUPED[group].map(o=>`<option ${entry.type===o?'selected':''}>${o}</option>`).join('') + `</optgroup>`
+  ).join('');
+  return `<div class="drink-entry" data-id="${entry.id}" style="grid-template-columns:1fr;">
+    <div style="display:flex; justify-content:flex-end; gap:8px;">
+      <button class="btn small ghost" style="padding:6px 10px;" onclick="toggleExerciseEntryCollapse('${entry.id}')">▴ Collapse</button>
+      <button class="remove" style="position:static;" onclick="removeExerciseEntry('${entry.id}')">✕ remove</button>
+    </div>
+    <div class="row">
+      <div><label>Type</label><select onchange="updateExerciseEntry('${entry.id}','type',this.value)"><option value="">— Select —</option>${typeOpts}</select></div>
+      <div><label>Time (optional)</label><input type="time" value="${entry.time}" onchange="updateExerciseEntry('${entry.id}','time',this.value)"></div>
+    </div>
+    <label>Duration (minutes)</label>
+    <input type="number" min="0" value="${entry.duration}" placeholder="e.g. 30" oninput="updateExerciseEntry('${entry.id}','duration',this.value)">
+    <label>Notes (optional)</label>
+    <input type="text" value="${entry.notes}" placeholder="Any notes about this activity" oninput="updateExerciseEntry('${entry.id}','notes',this.value)">
+  </div>`;
 }
-function setExerciseCollapsed(collapsed){
-  exerciseCollapsed = collapsed;
-  document.getElementById('exerciseFields').style.display = collapsed ? 'none' : 'block';
-  document.getElementById('exerciseSummary').style.display = collapsed ? 'block' : 'none';
-  document.getElementById('exerciseCollapseBtn').style.display = collapsed ? 'none' : 'inline-flex';
-  if(collapsed) document.getElementById('exerciseSummaryText').textContent = exerciseSummaryText();
+function toggleExerciseEntryCollapse(id){
+  if(collapsedExerciseIds.has(id)) collapsedExerciseIds.delete(id);
+  else collapsedExerciseIds.add(id);
+  renderExercises();
 }
-function toggleExerciseCollapse(){ setExerciseCollapsed(!exerciseCollapsed); }
-function refreshExerciseSummaryIfCollapsed(){
-  if(exerciseCollapsed) document.getElementById('exerciseSummaryText').textContent = exerciseSummaryText();
+function getExerciseEntry(id){ return exerciseEntries.find(e=>e.id===id); }
+function renderExercises(){
+  const c = document.getElementById('exerciseContainer');
+  c.innerHTML = exerciseEntries.length
+    ? exerciseEntries.map(e=>exerciseEntryHTML(e)).join('')
+    : '<p class="note">No activities logged yet — tap "Add exercise" below, whether that\'s 1 or several.</p>';
 }
-document.getElementById('stepSelect').addEventListener('change', refreshExerciseSummaryIfCollapsed);
-document.getElementById('customSteps').addEventListener('input', refreshExerciseSummaryIfCollapsed);
-document.getElementById('exerciseType').addEventListener('change', refreshExerciseSummaryIfCollapsed);
-document.getElementById('exerciseDuration').addEventListener('input', refreshExerciseSummaryIfCollapsed);
+document.getElementById('addExerciseBtn').addEventListener('click', ()=>{
+  const e = newExerciseEntry();
+  exerciseEntries.push(e);
+  collapsedExerciseIds.delete(e.id);
+  renderExercises();
+});
+function removeExerciseEntry(id){ exerciseEntries = exerciseEntries.filter(e=>e.id!==id); collapsedExerciseIds.delete(id); renderExercises(); }
+function updateExerciseEntry(id, field, val){ const e = getExerciseEntry(id); if(e) e[field] = val; }
+// Converts records saved under the old single Exercise Type/Duration/Notes fields
+// into the new repeatable list, so nothing gets lost when opening old data.
+function normalizeExercises(rec){
+  if(rec.exercises) return rec.exercises;
+  if(rec.exerciseType || rec.exerciseDuration || rec.exerciseNotes){
+    return [{ id:'legacyex'+Math.random().toString(36).slice(2), time:'', type:rec.exerciseType||'', duration:rec.exerciseDuration||'', notes:rec.exerciseNotes||'' }];
+  }
+  return [];
+}
 
 // ---------- Save / Load record ----------
 function collectForm(){
@@ -962,9 +958,7 @@ function collectForm(){
     drinks: JSON.parse(JSON.stringify(drinksState)),
     supplements: JSON.parse(JSON.stringify(supplementsState)),
     steps,
-    exerciseType: document.getElementById('exerciseType').value,
-    exerciseDuration: document.getElementById('exerciseDuration').value,
-    exerciseNotes: document.getElementById('exerciseNotes').value,
+    exercises: JSON.parse(JSON.stringify(exerciseEntries)),
     notes: document.getElementById('dailyNotes').value
   };
 }
@@ -1016,13 +1010,12 @@ function loadRecordIntoForm(date){
     supplementsState = rec.supplements ? JSON.parse(JSON.stringify(rec.supplements)) : [];
     supplementsState.forEach(s=>{ if(!s.id) s.id = 'sup'+Date.now()+Math.random().toString(36).slice(2); });
     collapsedSupplementIds = new Set(supplementsState.map(e=>e.id));
+    exerciseEntries = normalizeExercises(rec);
+    collapsedExerciseIds = new Set(exerciseEntries.map(e=>e.id));
     const stepOptsSet = [0,1500,3000,5000,7000,10000,12000];
     document.getElementById('stepSelect').value = stepOptsSet.includes(rec.steps) ? rec.steps : 'custom';
     document.getElementById('customSteps').style.display = stepOptsSet.includes(rec.steps) ? 'none':'block';
     document.getElementById('customSteps').value = stepOptsSet.includes(rec.steps) ? '' : (rec.steps||'');
-    document.getElementById('exerciseType').value = rec.exerciseType || '';
-    document.getElementById('exerciseDuration').value = rec.exerciseDuration || '';
-    document.getElementById('exerciseNotes').value = rec.exerciseNotes || '';
     document.getElementById('dailyNotes').value = rec.notes || '';
   } else {
     document.getElementById('weightInput').value = '';
@@ -1033,19 +1026,18 @@ function loadRecordIntoForm(date){
     collapsedDrinkIds = new Set();
     supplementsState = [];
     collapsedSupplementIds = new Set();
+    exerciseEntries = [];
+    collapsedExerciseIds = new Set();
     document.getElementById('stepSelect').value = '0';
     document.getElementById('customSteps').style.display='none';
     document.getElementById('customSteps').value='';
-    document.getElementById('exerciseType').value='';
-    document.getElementById('exerciseDuration').value='';
-    document.getElementById('exerciseNotes').value='';
     document.getElementById('dailyNotes').value='';
   }
   renderMeals();
   renderDrinks();
   renderSupplements();
+  renderExercises();
   refreshBmi();
-  setExerciseCollapsed(hasExerciseData()); // collapse if this day already has exercise info saved
 }
 
 // ---------- History ----------
@@ -1178,12 +1170,20 @@ function openDayModal(date){
     ? '<ul style="margin:4px 0 0 18px; padding:0;">' + (r.supplements||[]).map(s=>`<li>${[s.type, s.name, s.dosage].filter(Boolean).join(' — ')}${s.time?' @ '+s.time:''}${s.notes?' ('+s.notes+')':''}</li>`).join('') + '</ul>'
     : '<p class="note" style="margin-top:4px;">None recorded.</p>';
 
+  const exerciseList = normalizeExercises(r);
+  const exercisesHtml = exerciseList.length
+    ? '<ul style="margin:4px 0 0 18px; padding:0;">' + exerciseList.map(e=>`<li>${[e.type, e.duration?e.duration+' min':''].filter(Boolean).join(' — ')}${e.time?' @ '+e.time:''}${e.notes?' ('+e.notes+')':''}</li>`).join('') + '</ul>'
+    : '<p class="note" style="margin-top:4px;">None recorded.</p>';
+  const exerciseSummaryStat = exerciseList.length
+    ? (exerciseList.length===1 ? exerciseList[0].type||'1 activity' : exerciseList.length+' activities')
+    : 'None';
+
   document.getElementById('modalBody').innerHTML = `
     <div class="stat-grid" style="margin-bottom:12px;">
       <div class="stat"><div class="val">${r.weight ?? '–'} kg</div><div class="lbl">Weight ${weightBadge}</div></div>
       <div class="stat"><div class="val">${r.bmi?r.bmi.toFixed(1):'–'}</div><div class="lbl">${cat?cat.label:'BMI'}</div></div>
       <div class="stat"><div class="val">${r.steps||0}</div><div class="lbl">Steps</div></div>
-      <div class="stat"><div class="val">${r.exerciseType || 'None'}</div><div class="lbl">${r.exerciseDuration?r.exerciseDuration+' min exercise':'Exercise'}</div></div>
+      <div class="stat"><div class="val">${exerciseSummaryStat}</div><div class="lbl">Exercise</div></div>
       <div class="stat"><div class="val">${fluid} ml</div><div class="lbl">Total fluids${alcohol?' ('+alcohol+' ml alcohol)':''}</div></div>
       <div class="stat"><div class="val">${calCount>0?calTotal+' kcal':'–'}</div><div class="lbl">Calories (${calCount}/${calItems} items logged)</div></div>
     </div>
@@ -1194,8 +1194,9 @@ function openDayModal(date){
     ${drinksHtml}
     <h3 style="font-size:13px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.04em; margin-top:10px;">Supplements &amp; medication</h3>
     ${supplementsHtml}
-    ${r.exerciseNotes?`<p style="margin-top:10px;"><strong>Exercise notes:</strong> ${r.exerciseNotes}</p>`:''}
-    ${r.notes?`<p style="margin-top:6px;"><strong>Daily notes:</strong> ${r.notes}</p>`:''}
+    <h3 style="font-size:13px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.04em; margin-top:10px;">Exercise</h3>
+    ${exercisesHtml}
+    ${r.notes?`<p style="margin-top:10px;"><strong>Daily notes:</strong> ${r.notes}</p>`:''}
   `;
   document.getElementById('dayModalBg').classList.add('show');
 }
@@ -1405,7 +1406,7 @@ function buildPeriodSummary(recs, filterFn){
   const totalFluid = dates.reduce((s,d)=> s + (recs[d].drinks||[]).reduce((x,y)=>x+(Number(y.ml)||0),0), 0);
   const avgFluid = Math.round(totalFluid/dates.length);
   const alcoholCount = dates.reduce((s,d)=> s + (recs[d].drinks||[]).filter(x=>['Beer','Wine','Hard liquor'].includes(x.type)).length, 0);
-  const exerciseDays = dates.filter(d=>recs[d].exerciseType).length;
+  const exerciseDays = dates.filter(d=>normalizeExercises(recs[d]).length > 0).length;
   const mealCounts = {}; MEAL_TYPE_OPTIONS.forEach(m=>mealCounts[m]=0);
   let totalMeals = 0;
   dates.forEach(d=>{
@@ -1435,11 +1436,12 @@ document.getElementById('exportJsonBtn').addEventListener('click', ()=>{
 document.getElementById('exportCsvBtn').addEventListener('click', ()=>{
   const recs = getAllRecords();
   const dates = Object.keys(recs).sort();
-  let csv = 'Date,DayOfWeek,Weight(kg),Height(cm),BMI,Steps,ExerciseType,ExerciseDuration,TotalFluid(ml),Notes\n';
+  let csv = 'Date,DayOfWeek,Weight(kg),Height(cm),BMI,Steps,Exercises,TotalFluid(ml),Notes\n';
   dates.forEach(d=>{
     const r = recs[d];
     const fluid = (r.drinks||[]).reduce((s,x)=>s+(Number(x.ml)||0),0);
-    csv += [d, r.dayOfWeek, r.weight||'', r.height||'', r.bmi?r.bmi.toFixed(1):'', r.steps||0, r.exerciseType||'', r.exerciseDuration||'', fluid, (r.notes||'').replace(/,/g,';')].join(',') + '\n';
+    const exSummary = normalizeExercises(r).map(e=>e.type+(e.duration?' '+e.duration+'min':'')).join('; ');
+    csv += [d, r.dayOfWeek, r.weight||'', r.height||'', r.bmi?r.bmi.toFixed(1):'', r.steps||0, exSummary, fluid, (r.notes||'').replace(/,/g,';')].join(',') + '\n';
   });
   downloadFile('food-weight-tracker.csv', csv, 'text/csv');
 });
@@ -1452,6 +1454,7 @@ document.getElementById('exportExcelBtn').addEventListener('click', ()=>{
   const dailyRows = dates.map(d=>{
     const r = recs[d];
     const fluid = (r.drinks||[]).reduce((s,x)=>s+(Number(x.ml)||0),0);
+    const exList = normalizeExercises(r);
     return {
       Date: d,
       'Day of Week': r.dayOfWeek||'',
@@ -1460,9 +1463,7 @@ document.getElementById('exportExcelBtn').addEventListener('click', ()=>{
       BMI: r.bmi ? Number(r.bmi.toFixed(1)) : '',
       'BMI Category': r.bmi ? bmiCategory(r.bmi).label : '',
       Steps: r.steps || 0,
-      'Exercise Type': r.exerciseType || '',
-      'Exercise Duration (min)': r.exerciseDuration || '',
-      'Exercise Notes': r.exerciseNotes || '',
+      'Exercise Summary': exList.map(e=>e.type+(e.duration?' ('+e.duration+' min)':'')).join('; '),
       'Total Fluid (ml)': fluid,
       'Daily Notes': r.notes || ''
     };
@@ -1501,11 +1502,21 @@ document.getElementById('exportExcelBtn').addEventListener('click', ()=>{
     });
   });
 
+  // Sheet 5: Exercise detail
+  const exerciseRows = [];
+  dates.forEach(d=>{
+    const r = recs[d];
+    normalizeExercises(r).forEach(e=>{
+      exerciseRows.push({ Date: d, Time: e.time||'', Type: e.type||'', 'Duration (min)': e.duration||'', Notes: e.notes||'' });
+    });
+  });
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailyRows), 'Daily Summary');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(mealRows.length?mealRows:[{Date:'',Meal:'',Note:'No meal items recorded'}]), 'Meals Detail');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(drinkRows.length?drinkRows:[{Date:'',Note:'No drinks recorded'}]), 'Drinks Detail');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(supplementRows.length?supplementRows:[{Date:'',Note:'No supplements or medication recorded'}]), 'Supplements');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exerciseRows.length?exerciseRows:[{Date:'',Note:'No exercise recorded'}]), 'Exercise Detail');
   XLSX.writeFile(wb, 'food-weight-tracker.xlsx');
   toast('Excel file downloaded');
 });
@@ -1553,7 +1564,7 @@ function loadSampleData(){
       ],
       drinks:[{type:'Water',time:'08:00',ml:250},{type:'Coffee',time:'09:30',ml:200},{type:'Water',time:'15:00',ml:330}],
       steps: [3000,5000,7000,10000][Math.floor(Math.random()*4)],
-      exerciseType: Math.random()>0.4 ? 'Walking':'', exerciseDuration: 20, exerciseNotes:'',
+      exercises: Math.random()>0.4 ? [{id:'sx1',time:'18:00',type:'Walking',duration:20,notes:''}] : [],
       notes:''
     };
   }
